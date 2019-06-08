@@ -1,0 +1,111 @@
+---
+title: "190608_explore"
+author: "Donghyun Kang"
+date: '2019 6 8 '
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+options(scipen=999)
+```
+
+```{r}
+df_18664 <- read_csv("r_values_18,664_claims.txt")
+df_less_50 <- df_18664 %>%
+  filter(num_of_studies < 50)
+
+df_less_50 <- drop_na(df_less_50)
+
+length(unique(separate(df_less_50, "REV_OUTCOME", "REV")$REV))
+
+df_less_50 <- df_less_50 %>%
+  mutate(p_sig = ifelse(p_value < 0.05, 1, 0),
+         r_sig = ifelse(r_value < 0.05, 1, 0))
+
+
+df_less_50 <- df_less_50 %>%
+  mutate(sig_sig = ifelse(p_sig ==1 & r_sig == 1, 1, 0),
+         sig_insig = ifelse(p_sig ==1 & r_sig == 0, 1, 0),
+         insig_insig = ifelse(p_sig == 0 & r_sig == 0 , 1 ,0),
+         insig_sig = ifelse(p_sig == 0 & r_sig == 1 , 1 ,0))
+
+
+sig_only <- df_less_50 %>%
+  filter(p_sig == 1)
+
+length(unique(separate(sig_only, "REV_OUTCOME", "REV")$REV))
+
+
+nrow(df_less_50 %>%
+  filter(p_sig == 0))
+
+
+nrow(df_less_50 %>%
+  filter(r_sig == 1))
+
+nrow(df_less_50 %>%
+  filter(r_sig == 0))
+
+
+
+nrow(df_less_50 %>%
+  filter(sig_sig == 1))
+
+nrow(df_less_50 %>%
+  filter(sig_insig == 1))
+
+nrow(df_less_50 %>%
+  filter(insig_insig == 1))
+
+nrow(df_less_50 %>%
+  filter(insig_sig == 1))
+```
+s
+
+```{r}
+author_dep <- read_tsv("author_dep_score_6466.tsv", col_names = c("REV_OUTCOME", "coauthor_dep"))
+ref_dep <- read_tsv("ref_dep_score_6466.tsv", col_names = c("REV_OUTCOME", "ref_dep"))
+
+df_joined <- sig_only %>%
+  left_join(author_dep) %>%
+  left_join(ref_dep) %>%
+  mutate(coauthorship_Dep = coauthor_dep*10)
+```
+
+```{r}
+mod_less_50 <- glm(data = df_joined, sig_sig ~ num_of_studies + coauthorship_Dep + ref_dep, family = "binomial")
+summary(mod_less_50)
+```
+
+
+```{r}
+library(stargazer)
+stargazer(mod_less_50, type = "html")
+```
+
+```{r}
+#figure 4
+require(scales) # trans_new() is in the scales library
+quad_root_trans <- function() 
+  trans_new("quad_root", function(x) x**(1/6), function(x) x**(1/6))
+  
+df_less_50 <- df_less_50 %>%
+  mutate(class = ifelse(sig_sig == 1, "both sig", 
+                 ifelse(sig_insig == 1, "become insig", "both insig")))
+
+library(ggplot2)
+theme_set(theme_minimal())
+p <- df_less_50 %>%
+  ggplot(aes(x=p_value, y = r_value, group = class)) + 
+  geom_point(aes(color = class, shape = class), alpha = 0.4) + 
+  coord_trans(x = "quad_root", y = "quad_root") + 
+  scale_x_continuous(breaks = c(0.01, 0.05, 0.1, 0.25, 0.5, 1)) + 
+  scale_y_continuous(breaks = c(0.01, 0.05, 0.1, 0.25, 0.5, 1)) + 
+  ggtitle("p-values and r-values from 17,891 claims") 
+
+p
+ggsave("fig_4.jpg", width = 7, height = 5)
+```
+
